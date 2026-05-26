@@ -110,92 +110,61 @@ class YtDlpGUI:
         self.clear_button = ttk.Button(self.url_frame, text="清空", width=5, command=self.clear_url)
         self.clear_button.pack(side=tk.LEFT, padx=(4, 0))
         
-        self.download_button = ttk.Button(self.url_frame, text="下载", command=self.start_download)
-        self.download_button.pack(side=tk.LEFT, padx=(8, 0))
-        
         self.url_frame.grid_columnconfigure(0, weight=1)
         
+        # 各选项详细配置区域
+        self.detail_area = ttk.Frame(self.main_frame)
+        self.detail_area.grid(row=2, column=0, columnspan=2, padx=12, pady=(0, 6), sticky=(tk.W, tk.E))
 
-        # 重命名设置 (Row 1)
-        self.rename_var = tk.BooleanVar()
-        self.rename_checkbutton = ttk.Checkbutton(self.main_frame, text="重命名:",
-                                                 variable=self.rename_var)
-        self.rename_checkbutton.grid(row=1, column=0, padx=12, pady=6, sticky=tk.W)
-
-        self.rename_frame = ttk.Frame(self.main_frame)
-        self.rename_frame.grid(row=1, column=1, padx=12, pady=6, sticky=tk.W + tk.E)
-
-        self.rename_entry = ttk.Entry(self.rename_frame, width=25)
-        self.rename_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
-
-        ttk.Label(self.rename_frame, text="Tag:").pack(side=tk.LEFT, padx=(8, 4))
-        self.tag_entry = ttk.Combobox(self.rename_frame, width=15)
+        # 重命名详细配置
+        self.rename_detail = ttk.Frame(self.detail_area)
+        ttk.Label(self.rename_detail, text="重命名文件名:").pack(side=tk.LEFT, padx=(0, 4))
+        self.rename_entry = ttk.Entry(self.rename_detail, width=25)
+        self.rename_entry.pack(side=tk.LEFT, ipady=2)
+        ttk.Label(self.rename_detail, text="标签:").pack(side=tk.LEFT, padx=(8, 4))
+        self.tag_entry = ttk.Combobox(self.rename_detail, width=15)
         self.tag_entry.pack(side=tk.LEFT, ipady=2)
-        
-        self.clear_tag_button = ttk.Button(self.rename_frame, text="×", width=1, command=self.clear_all_tags)
-        self.clear_tag_button.pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.rename_detail, text="×", width=1, command=self.clear_all_tags).pack(side=tk.LEFT, padx=2)
 
-        # 选项区域 (Row 2)
-        self.options_container = ttk.Frame(self.main_frame)
-        self.options_container.grid(row=2, column=0, columnspan=2, padx=12, pady=10, sticky=(tk.W, tk.E))
-
-        # Cookie设置
-        self.cookie_var = tk.BooleanVar()
-        self.cookie_frame = ttk.Frame(self.options_container)
-        self.cookie_frame.pack(side=tk.TOP, anchor=tk.W, pady=2)
-        
-        self.use_cookie_checkbutton = ttk.Checkbutton(self.cookie_frame, text="Cookie:",
-                                                     variable=self.cookie_var)
-        self.use_cookie_checkbutton.pack(side=tk.LEFT, padx=(0, 4))
-        
+        # Cookie详细配置
+        self.cookie_detail = ttk.Frame(self.detail_area)
         self.cookie_files = []
-        self.cookie_combo = ttk.Combobox(self.cookie_frame, width=20, state='readonly')
-        self.cookie_combo.pack(side=tk.LEFT, padx=20)
+        ttk.Label(self.cookie_detail, text="Cookie文件:").pack(side=tk.LEFT, padx=(0, 4))
+        self.cookie_combo = ttk.Combobox(self.cookie_detail, width=20, state='readonly')
+        self.cookie_combo.pack(side=tk.LEFT, ipady=2)
         self.cookie_combo.bind("<<ComboboxSelected>>", self.on_cookie_select)
-        
-        self.add_cookie_button = ttk.Button(self.cookie_frame, text="添加", width=5, command=self.add_cookie_file)
-        self.add_cookie_button.pack(side=tk.LEFT, padx=(4, 0))
-        
-        self.reload_cookie_button = ttk.Button(self.cookie_frame, text="刷新", width=5, command=self.reload_cookie_files)
-        self.reload_cookie_button.pack(side=tk.LEFT, padx=(4, 0))
-        
-        self.edit_cookie_button = ttk.Button(self.cookie_frame, text="编辑", width=5, command=self.open_cookie_file)
-        self.edit_cookie_button.pack(side=tk.LEFT, padx=(4, 0))
-        
-        self.del_cookie_button = ttk.Button(self.cookie_frame, text="删除", width=5, command=self.delete_cookie_file)
-        self.del_cookie_button.pack(side=tk.LEFT, padx=(4, 0))
-        
+        ttk.Button(self.cookie_detail, text="添加", width=5, command=self.add_cookie_file).pack(side=tk.LEFT, padx=(4, 2))
+        ttk.Button(self.cookie_detail, text="刷新", width=5, command=self.reload_cookie_files).pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.cookie_detail, text="编辑", width=5, command=self.open_cookie_file).pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.cookie_detail, text="删除", width=5, command=self.delete_cookie_file).pack(side=tk.LEFT, padx=2)
         self.reload_cookie_files()
 
-        # 代理设置
-        self.proxy_var = tk.BooleanVar()
-        self.use_proxy_checkbutton = ttk.Checkbutton(self.options_container, text="代理:",
-                                                     variable=self.proxy_var, command=self.toggle_proxy_entry)
-        self.use_proxy_checkbutton.pack(side=tk.LEFT, padx=(0, 4))
-        self.proxy_entry = ttk.Entry(self.options_container, width=30)
-        self.proxy_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=2)
+        # 代理详细配置
+        self.proxy_detail = ttk.Frame(self.detail_area)
+        ttk.Label(self.proxy_detail, text="代理地址:").pack(side=tk.LEFT, padx=(0, 4))
+        self.proxy_entry = ttk.Entry(self.proxy_detail, width=30)
+        self.proxy_entry.pack(side=tk.LEFT, ipady=2)
+        ttk.Button(self.proxy_detail, text="7890", width=5, command=lambda: self.proxy_entry.delete(0, tk.END) or self.proxy_entry.insert(0, "127.0.0.1:7890")).pack(side=tk.LEFT, padx=4)
 
-        # 格式选项区域
-        self.format_frame = ttk.Frame(self.options_container)
-        self.format_frame.pack(side=tk.LEFT, anchor=tk.W, pady=0)
+        # 初始隐藏所有详细配置
+        self.rename_detail.grid_forget()
+        self.cookie_detail.grid_forget()
+        self.proxy_detail.grid_forget()
         
-        self.mp4_var = tk.BooleanVar()
-        self.mp4_checkbutton = ttk.Checkbutton(self.format_frame, text="转换成 MP4",
-                                             variable=self.mp4_var)
-        self.mp4_checkbutton.pack(side=tk.LEFT, padx=(20, 16))
+        # 日志框（始终显示）
+        self.log_frame = ttk.Frame(self.main_frame)
+        self.log_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), padx=12, pady=(0, 12))
+        self.log_text = tk.Text(self.log_frame, bg='#2b2b2b', fg='white', insertbackground='white',
+                               font=('Consolas', 10), relief=tk.FLAT, borderwidth=0,
+                               highlightthickness=0, padx=5, pady=5,
+                               yscrollcommand=lambda f, l: None)
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.log_text.config(state=tk.DISABLED)
         
-        self.mp3_var = tk.BooleanVar()
-        self.mp3_checkbutton = ttk.Checkbutton(self.format_frame, text="转换成 MP3",
-                                             variable=self.mp3_var)
-        self.mp3_checkbutton.pack(side=tk.LEFT, padx=8)
-
-        # 历史记录和日志切换区域 (Row 4)
-        self.content_frame = ttk.Frame(self.main_frame)
-        self.content_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), padx=12, pady=(0, 12))
-        
-        # 历史记录区域 - 整合边框和按钮
-        self.history_frame = ttk.Frame(self.content_frame)
-        self.history_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+        # 历史记录区域（默认隐藏）
+        self.history_frame = ttk.Frame(self.main_frame)
+        self.history_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), padx=12, pady=(0, 12))
+        self.history_frame.grid_forget()
         
         # 内部标题和清空按钮区域
         self.history_inner_header = ttk.Frame(self.history_frame)
@@ -233,14 +202,6 @@ class YtDlpGUI:
         history_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.history_listbox.config(yscrollcommand=history_scrollbar.set)
         
-        # 日志区域（默认隐藏）
-        self.log_frame = ttk.Frame(self.content_frame)
-        self.log_text = scrolledtext.ScrolledText(self.log_frame, width=80, height=25, 
-                                                bg='#2b2b2b', fg='white', insertbackground='white',
-                                                font=('Consolas', 10))
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-        self.log_text.config(state=tk.DISABLED)
-        
         # 历史记录文件路径
         self.history_file = 'download_history.json'
         self.load_history()
@@ -248,12 +209,6 @@ class YtDlpGUI:
         # 加载 Tags
         self.tags_data = []
         self.load_tags()
-        
-        # 默认显示历史记录，隐藏日志
-        self.log_frame.pack_forget()
-        
-        # 自动切换到日志显示（下载时需要看进度）
-        self.show_log_on_download = True
 
         # 配置网格权重
         master.grid_columnconfigure(0, weight=1)
@@ -275,6 +230,32 @@ class YtDlpGUI:
         for child in [self.title_label]:
             child.bind('<Button-1>', self.start_drag)
             child.bind('<B1-Motion>', self.on_drag)
+        
+        # 选项开关
+        self.rename_var = tk.BooleanVar()
+        tk.Checkbutton(self.title_bar, text="重命名", variable=self.rename_var, command=self.on_rename_toggle,
+                      bg='#333333', fg='#aaaaaa', selectcolor='#404040', activebackground='#404040',
+                      font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=6)
+        
+        self.cookie_var = tk.BooleanVar()
+        tk.Checkbutton(self.title_bar, text="Cookie", variable=self.cookie_var, command=self.on_cookie_toggle,
+                      bg='#333333', fg='#aaaaaa', selectcolor='#404040', activebackground='#404040',
+                      font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=6)
+        
+        self.proxy_var = tk.BooleanVar()
+        tk.Checkbutton(self.title_bar, text="代理", variable=self.proxy_var, command=self.on_proxy_toggle,
+                      bg='#333333', fg='#aaaaaa', selectcolor='#404040', activebackground='#404040',
+                      font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=6)
+        
+        self.mp4_var = tk.BooleanVar()
+        tk.Checkbutton(self.title_bar, text="MP4", variable=self.mp4_var,
+                      bg='#333333', fg='#aaaaaa', selectcolor='#404040', activebackground='#404040',
+                      font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=6)
+        
+        self.mp3_var = tk.BooleanVar()
+        tk.Checkbutton(self.title_bar, text="MP3", variable=self.mp3_var,
+                      bg='#333333', fg='#aaaaaa', selectcolor='#404040', activebackground='#404040',
+                      font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=6)
         
         # 帮助菜单
         self.help_button = tk.Menubutton(self.title_bar, text="帮助 ▼", bg='#333333', fg='#aaaaaa',
@@ -303,6 +284,14 @@ class YtDlpGUI:
                                      width=3, command=self.quit_app)
         self.title_close.pack(side=tk.RIGHT, padx=5)
         
+        self.download_button = tk.Button(self.title_bar, text="下载", 
+                                       command=self.start_download,
+                                       font=('Segoe UI', 9, 'bold'),
+                                       fg='#00ff00', bg='#333333',
+                                       activebackground='#404040', activeforeground='#5dfc5d',
+                                       relief=tk.FLAT, cursor='hand2', padx=15)
+        self.download_button.pack(side=tk.RIGHT, padx=10)
+        
         self.status_frame = ttk.Frame(master, style='TFrame')
         self.status_frame.grid(row=2, column=0, sticky=(tk.W, tk.E))
         
@@ -315,7 +304,7 @@ class YtDlpGUI:
         self.status_frame.configure(style='Status.TLabel') # 给框架也上色
 
         # 将切换日志和打开文件夹按钮放入状态栏右侧
-        self.show_history_var = tk.BooleanVar(value=True)
+        self.show_history_var = tk.BooleanVar(value=False)
         self.toggle_button = ttk.Button(self.status_frame, text="显示日志", command=self.toggle_content, style='Status.TButton')
         self.toggle_button.pack(side=tk.RIGHT, padx=2, pady=1)
         
@@ -386,15 +375,13 @@ class YtDlpGUI:
     def toggle_content(self):
         """切换历史记录和日志显示"""
         if self.show_history_var.get():
-            # 切换到日志
-            self.history_frame.pack_forget()
-            self.log_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+            self.history_frame.grid_forget()
+            self.log_frame.grid()
             self.toggle_button.config(text="显示历史记录")
             self.show_history_var.set(False)
         else:
-            # 切换到历史记录
-            self.log_frame.pack_forget()
-            self.history_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+            self.log_frame.grid_forget()
+            self.history_frame.grid()
             self.toggle_button.config(text="显示日志")
             self.show_history_var.set(True)
 
@@ -571,18 +558,28 @@ class YtDlpGUI:
             self.open_settings()
 
     def toggle_proxy_entry(self):
-        """
-        Enables or disables the proxy entry field based on the checkbox state.
-        If enabled, sets the default proxy value "127.0.0.1:7890".
-        Clears the proxy entry when disabled.
-        """
         if self.proxy_var.get():
-            self.proxy_entry.config(state=tk.NORMAL)
-            self.proxy_entry.delete(0, tk.END)  # Clear any previous content
-            self.proxy_entry.insert(0, "127.0.0.1:7890")  # Insert default proxy
+            self.proxy_entry.delete(0, tk.END)
+            self.proxy_entry.insert(0, "127.0.0.1:7890")
+
+    def on_rename_toggle(self):
+        if self.rename_var.get():
+            self.rename_detail.grid(row=0, column=0, sticky=tk.W)
         else:
-            self.proxy_entry.delete(0, tk.END) # Clear content when disabling
-            self.proxy_entry.config(state=tk.DISABLED)
+            self.rename_detail.grid_forget()
+
+    def on_cookie_toggle(self):
+        if self.cookie_var.get():
+            self.cookie_detail.grid(row=1, column=0, sticky=tk.W)
+        else:
+            self.cookie_detail.grid_forget()
+
+
+    def on_proxy_toggle(self):
+        if self.proxy_var.get():
+            self.proxy_detail.grid(row=2, column=0, sticky=tk.W)
+        else:
+            self.proxy_detail.grid_forget()
 
     def open_cookie_file(self):
         """打开选中的 cookie 文件"""
@@ -801,8 +798,6 @@ class YtDlpGUI:
             command.extend(["-o", "%(title)s-%(id)s.%(ext)s"])
         
         command.extend(["-P", self.download_path])
-        
-        self.master.after(0, lambda: self.toggle_content() if self.show_log_on_download and self.show_history_var.get() else None)
         
         self.run_download_process(command, download_id, url)
 
@@ -1058,13 +1053,13 @@ if __name__ == '__main__':
     import screeninfo
     root = ThemedTk(theme="equilux")
     root.configure(bg='#2b2b2b')
-    root.overrideredirect(True)
+    # root.overrideredirect(True)
     root.resizable(True, True)
     
     screen = screeninfo.get_monitors()[0]
-    x = (screen.width - 1400) // 2
-    y = (screen.height - 850) // 2
-    root.geometry(f'1400x850+{x}+{y}')
+    x = (screen.width - 1000) // 2
+    y = (screen.height - 800) // 2
+    root.geometry(f'1000x800+{x}+{y}')
     
     root.iconbitmap(resource_path("icon.ico"))
         
