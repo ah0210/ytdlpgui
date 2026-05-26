@@ -1,1 +1,1 @@
-pyinstaller --onefile --clean --icon=icon.png --hidden-import=ttkthemes --hidden-import=tkinter --hidden-import=queue --hidden-import=threading --hidden-import=subprocess --hidden-import=os --hidden-import=ctypes ytdlpgui.py
+pyinstaller --onefile --clean --noconsole --icon=icon.ico --add-data "icon.ico;." --hidden-import=ttkthemes --hidden-import=tkinter --hidden-import=queue --hidden-import=threading --hidden-import=subprocess --hidden-import=os --hidden-import=ctypes --hidden-import=tempfile --hidden-import=screeninfo ytdlpgui.py

@@ -1,16 +1,26 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog, messagebox
+from tkinter import ttk, scrolledtext, filedialog, messagebox, simpledialog
 import subprocess
 import queue
 import os
+import sys
+import threading
+import tempfile
 from ttkthemes import ThemedTk
 import ctypes
 import webbrowser
 import configparser
 import shutil
-import tempfile
 import json
 from datetime import datetime
+
+def resource_path(relative_path):
+    """获取资源文件的绝对路径，兼容 PyInstaller 打包"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 # 设置DPI感知
 try:
@@ -33,6 +43,12 @@ class YtDlpGUI:
         self.style.configure('TButton', background='#2b2b2b', foreground='white', font=('Segoe UI', 10))
         self.style.configure('TCheckbutton', background='#464646', foreground='white', font=('Segoe UI', 10))
         self.style.configure('TEntry', fieldbackground='#2b2b2b', foreground='white', font=('Segoe UI', 10))
+        self.style.configure('TCombobox', fieldbackground='#2b2b2b', foreground='white', background='#2b2b2b', font=('Segoe UI', 10))
+        self.style.map('TCombobox',
+            fieldbackground=[('readonly', '#2b2b2b'), ('disabled', '#2b2b2b')],
+            foreground=[('readonly', 'white'), ('disabled', '#666666')],
+            selectbackground=[('readonly', '#404040')],
+            selectforeground=[('readonly', 'white')])
         
         # 配置按钮样式
         self.style.map('TButton',
@@ -56,11 +72,8 @@ class YtDlpGUI:
             foreground=[('disabled', '#666666')])
 
         # 创建主框架
-        self.main_frame = ttk.Frame(master, padding="15")
+        self.main_frame = ttk.Frame(master, padding="10")
         self.main_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # 创建顶部菜单栏
-        self.create_menu_bar()
         
         # 读取配置文件
         self.config = configparser.ConfigParser()
@@ -91,95 +104,90 @@ class YtDlpGUI:
         # self.url_var.trace_add("write", self.on_url_change) # 移除自动去除参数功能
         self.url_entry.bind('<Return>', lambda e: self.start_download())  # Enter 键触发下载
         
-        self.clean_button = ttk.Button(self.url_frame, text="remove Params", width=10, command=self.clean_url_params)
+        self.clean_button = ttk.Button(self.url_frame, text="清除参数", width=10, command=self.clean_url_params)
         self.clean_button.pack(side=tk.LEFT, padx=(4, 0))
 
-        self.clear_button = ttk.Button(self.url_frame, text="Clear", width=5, command=self.clear_url)
+        self.clear_button = ttk.Button(self.url_frame, text="清空", width=5, command=self.clear_url)
         self.clear_button.pack(side=tk.LEFT, padx=(4, 0))
+        
+        self.download_button = ttk.Button(self.url_frame, text="下载", command=self.start_download)
+        self.download_button.pack(side=tk.LEFT, padx=(8, 0))
         
         self.url_frame.grid_columnconfigure(0, weight=1)
         
 
-        # 代理设置
-        self.proxy_var = tk.BooleanVar()
-        self.use_proxy_checkbutton = ttk.Checkbutton(self.main_frame, text="Use Proxy",
-                                                     variable=self.proxy_var, command=self.toggle_proxy_entry)
-        self.use_proxy_checkbutton.grid(row=1, column=0, padx=12, pady=6, sticky=tk.W)
-
-        self.proxy_entry = ttk.Entry(self.main_frame, width=60, state=tk.DISABLED)
-        self.proxy_entry.grid(row=1, column=1, padx=12, pady=6, sticky=tk.W + tk.E, ipady=2)
-
-        # 重命名设置 (Row 2)
+        # 重命名设置 (Row 1)
         self.rename_var = tk.BooleanVar()
         self.rename_checkbutton = ttk.Checkbutton(self.main_frame, text="重命名:",
                                                  variable=self.rename_var)
-        self.rename_checkbutton.grid(row=2, column=0, padx=12, pady=6, sticky=tk.W)
+        self.rename_checkbutton.grid(row=1, column=0, padx=12, pady=6, sticky=tk.W)
 
         self.rename_frame = ttk.Frame(self.main_frame)
-        self.rename_frame.grid(row=2, column=1, padx=12, pady=6, sticky=tk.W + tk.E)
+        self.rename_frame.grid(row=1, column=1, padx=12, pady=6, sticky=tk.W + tk.E)
 
-        ttk.Label(self.rename_frame, text="文件名:").pack(side=tk.LEFT, padx=(0, 4))
         self.rename_entry = ttk.Entry(self.rename_frame, width=25)
         self.rename_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
 
         ttk.Label(self.rename_frame, text="Tag:").pack(side=tk.LEFT, padx=(8, 4))
         self.tag_entry = ttk.Combobox(self.rename_frame, width=15)
         self.tag_entry.pack(side=tk.LEFT, ipady=2)
-        self.tag_entry.bind("<<ComboboxSelected>>", self.on_tag_select)
-
-        # 选项与下载按钮区域 (Row 3)
-        self.action_area = ttk.Frame(self.main_frame)
-        self.action_area.grid(row=3, column=0, columnspan=2, padx=12, pady=10, sticky=(tk.W, tk.E))
         
-        self.options_container = ttk.Frame(self.action_area)
-        self.options_container.pack(side=tk.LEFT, fill=tk.Y)
+        self.clear_tag_button = ttk.Button(self.rename_frame, text="×", width=1, command=self.clear_all_tags)
+        self.clear_tag_button.pack(side=tk.LEFT, padx=2)
+
+        # 选项区域 (Row 2)
+        self.options_container = ttk.Frame(self.main_frame)
+        self.options_container.grid(row=2, column=0, columnspan=2, padx=12, pady=10, sticky=(tk.W, tk.E))
 
         # Cookie设置
         self.cookie_var = tk.BooleanVar()
         self.cookie_frame = ttk.Frame(self.options_container)
         self.cookie_frame.pack(side=tk.TOP, anchor=tk.W, pady=2)
         
-        self.use_cookie_checkbutton = ttk.Checkbutton(self.cookie_frame, text="Use Cookie",
+        self.use_cookie_checkbutton = ttk.Checkbutton(self.cookie_frame, text="Cookie:",
                                                      variable=self.cookie_var)
-        self.use_cookie_checkbutton.pack(side=tk.LEFT, padx=(0, 8))
+        self.use_cookie_checkbutton.pack(side=tk.LEFT, padx=(0, 4))
         
-        self.edit_cookie_button = ttk.Button(self.cookie_frame, text="编辑 Cookie", command=self.open_cookie_file)
-        self.edit_cookie_button.pack(side=tk.LEFT, padx=8)
+        self.cookie_files = []
+        self.cookie_combo = ttk.Combobox(self.cookie_frame, width=20, state='readonly')
+        self.cookie_combo.pack(side=tk.LEFT, padx=20)
+        self.cookie_combo.bind("<<ComboboxSelected>>", self.on_cookie_select)
+        
+        self.add_cookie_button = ttk.Button(self.cookie_frame, text="添加", width=5, command=self.add_cookie_file)
+        self.add_cookie_button.pack(side=tk.LEFT, padx=(4, 0))
+        
+        self.reload_cookie_button = ttk.Button(self.cookie_frame, text="刷新", width=5, command=self.reload_cookie_files)
+        self.reload_cookie_button.pack(side=tk.LEFT, padx=(4, 0))
+        
+        self.edit_cookie_button = ttk.Button(self.cookie_frame, text="编辑", width=5, command=self.open_cookie_file)
+        self.edit_cookie_button.pack(side=tk.LEFT, padx=(4, 0))
+        
+        self.del_cookie_button = ttk.Button(self.cookie_frame, text="删除", width=5, command=self.delete_cookie_file)
+        self.del_cookie_button.pack(side=tk.LEFT, padx=(4, 0))
+        
+        self.reload_cookie_files()
+
+        # 代理设置
+        self.proxy_var = tk.BooleanVar()
+        self.use_proxy_checkbutton = ttk.Checkbutton(self.options_container, text="代理:",
+                                                     variable=self.proxy_var, command=self.toggle_proxy_entry)
+        self.use_proxy_checkbutton.pack(side=tk.LEFT, padx=(0, 4))
+        self.proxy_entry = ttk.Entry(self.options_container, width=30)
+        self.proxy_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=2)
 
         # 格式选项区域
         self.format_frame = ttk.Frame(self.options_container)
-        self.format_frame.pack(side=tk.TOP, anchor=tk.W, pady=2)
+        self.format_frame.pack(side=tk.LEFT, anchor=tk.W, pady=0)
         
         self.mp4_var = tk.BooleanVar()
-        self.mp4_checkbutton = ttk.Checkbutton(self.format_frame, text="Download as MP4",
+        self.mp4_checkbutton = ttk.Checkbutton(self.format_frame, text="转换成 MP4",
                                              variable=self.mp4_var)
-        self.mp4_checkbutton.pack(side=tk.LEFT, padx=(0, 16))
+        self.mp4_checkbutton.pack(side=tk.LEFT, padx=(20, 16))
         
         self.mp3_var = tk.BooleanVar()
-        self.mp3_checkbutton = ttk.Checkbutton(self.format_frame, text="Download as MP3",
+        self.mp3_checkbutton = ttk.Checkbutton(self.format_frame, text="转换成 MP3",
                                              variable=self.mp3_var)
         self.mp3_checkbutton.pack(side=tk.LEFT, padx=8)
-
-        # 下载按钮 - 移动到选项右侧，更加紧凑
-        self.download_button = tk.Button(self.action_area, 
-                                       text="Download（下载）", 
-                                       command=self.start_download,
-                                       font=('Segoe UI', 11, 'bold'),
-                                       fg='#00ff00',
-                                       bg='#333333',
-                                       activebackground='#444444',
-                                       activeforeground='#5dfc5d',
-                                       relief=tk.FLAT,
-                                       cursor='hand2',
-                                       padx=40,
-                                       pady=10)
-        self.download_button.pack(side=tk.RIGHT, padx=12)
-
-        # # 按钮区域
-        # self.button_frame = ttk.Frame(self.main_frame)
-        # self.button_frame.grid(row=4, column=0, columnspan=2, pady=(12, 12))
-        
-
 
         # 历史记录和日志切换区域 (Row 4)
         self.content_frame = ttk.Frame(self.main_frame)
@@ -243,14 +251,58 @@ class YtDlpGUI:
         
         # 默认显示历史记录，隐藏日志
         self.log_frame.pack_forget()
+        
+        # 自动切换到日志显示（下载时需要看进度）
+        self.show_log_on_download = True
 
         # 配置网格权重
         master.grid_columnconfigure(0, weight=1)
         master.grid_rowconfigure(1, weight=1)  # 主框架可扩展
+        master.grid_rowconfigure(0, minsize=30)  # 标题栏高度
         self.main_frame.grid_columnconfigure(1, weight=1)
         self.main_frame.grid_rowconfigure(4, weight=1)  # 内容区域可扩展
         
-        # 状态栏框架
+        # 自定义标题栏（可拖拽）
+        self.title_bar = tk.Frame(master, bg='#333333', height=30)
+        self.title_bar.grid(row=0, column=0, sticky=(tk.W, tk.E))
+        
+        self.title_bar.bind('<Button-1>', self.start_drag)
+        self.title_bar.bind('<B1-Motion>', self.on_drag)
+        
+        self.title_label = tk.Label(self.title_bar, text="ytdlpGUI", bg='#333333', fg='#aaaaaa', font=('Segoe UI', 10))
+        self.title_label.pack(side=tk.LEFT, padx=10)
+        
+        for child in [self.title_label]:
+            child.bind('<Button-1>', self.start_drag)
+            child.bind('<B1-Motion>', self.on_drag)
+        
+        # 帮助菜单
+        self.help_button = tk.Menubutton(self.title_bar, text="帮助 ▼", bg='#333333', fg='#aaaaaa',
+                                        relief=tk.FLAT, bd=0, activebackground='#404040')
+        self.help_button.pack(side=tk.LEFT, padx=10)
+        self.help_button.menu = tk.Menu(self.help_button, tearoff=0, bg='#2b2b2b', fg='white',
+                                       activebackground='#404040', activeforeground='white')
+        self.help_button['menu'] = self.help_button.menu
+        
+        self.help_button.menu.add_command(label="GitHub 仓库", command=self.open_github_repo)
+        self.help_button.menu.add_command(label="快速答疑 FAQ", command=self.open_github_faq)
+        self.help_button.menu.add_command(label="bilibili 视频教程", command=self.open_bilibili_video)
+        self.help_button.menu.add_separator()
+        self.help_button.menu.add_command(label="下载 yt-dlp", command=self.get_ytdlp)
+        self.help_button.menu.add_command(label="下载 ffmpeg", command=self.get_ffmpeg)
+        self.help_button.menu.add_separator()
+        self.help_button.menu.add_command(label="升级 yt-dlp", command=self.upgrade_ytdlp)
+        
+        for child in [self.help_button]:
+            child.bind('<Button-1>', self.start_drag)
+            child.bind('<B1-Motion>', self.on_drag)
+        
+        self.title_close = tk.Button(self.title_bar, text="×", font=('Segoe UI', 14, 'bold'),
+                                     fg='#888888', bg='#333333', activebackground='#ff4444',
+                                     activeforeground='white', relief=tk.FLAT, cursor='hand2',
+                                     width=3, command=self.quit_app)
+        self.title_close.pack(side=tk.RIGHT, padx=5)
+        
         self.status_frame = ttk.Frame(master, style='TFrame')
         self.status_frame.grid(row=2, column=0, sticky=(tk.W, tk.E))
         
@@ -270,14 +322,17 @@ class YtDlpGUI:
         self.open_folder_button = ttk.Button(self.status_frame, text="打开文件夹", command=self.open_download_folder, style='Status.TButton')
         self.open_folder_button.pack(side=tk.RIGHT, padx=2, pady=1)
 
-        self.upgrade_button = ttk.Button(self.status_frame, text="升级 yt-dlp", command=self.upgrade_ytdlp, style='Status.TButton')
-        self.upgrade_button.pack(side=tk.RIGHT, padx=2, pady=1)
-
+        self.stop_button = ttk.Button(self.status_frame, text="停止下载", command=self.stop_all_downloads, style='Status.TButton')
+        self.stop_button.pack(side=tk.RIGHT, padx=2, pady=1)
+        
         # 设置窗口最小尺寸
         master.update_idletasks()
         master.minsize(500, 400)
 
         self.queue = queue.Queue()
+        self.active_downloads = {}
+        self.active_processes = {}
+        self.download_counter = 0
         self.master.after(100, self.process_queue)
 
     def create_menu_bar(self):
@@ -288,7 +343,7 @@ class YtDlpGUI:
         self.menubar_frame.configure(style='TFrame')
         
         # Help 按钮
-        self.help_button = ttk.Menubutton(self.menubar_frame, text="Help", direction='below')
+        self.help_button = ttk.Menubutton(self.menubar_frame, text="帮助", direction='below')
         self.help_button.pack(side=tk.LEFT, padx=(0, 0))
         
         # 创建 Help 下拉菜单
@@ -303,13 +358,15 @@ class YtDlpGUI:
         help_menu.add_separator()
         help_menu.add_command(label="下载 yt-dlp", command=self.get_ytdlp)
         help_menu.add_command(label="下载 ffmpeg", command=self.get_ffmpeg)
+        help_menu.add_separator()
+        help_menu.add_command(label="升级 yt-dlp", command=self.upgrade_ytdlp)
         
         # 分隔符标签
         separator_label = ttk.Label(self.menubar_frame, text="||", foreground='#888888')
         separator_label.pack(side=tk.LEFT, padx=(8, 8))
         
         # 版本信息标签
-        version_label = ttk.Label(self.menubar_frame, text="ytdlpGUI v2.2 by kasusa", foreground='#888888')
+        version_label = ttk.Label(self.menubar_frame, text="ytdlpGUI v2.3", foreground='#888888')
         version_label.pack(side=tk.LEFT, padx=(0, 8))
         
         # 配置菜单栏样式
@@ -347,7 +404,7 @@ class YtDlpGUI:
             self.history_data = []
             self.save_history()
             self.update_history_display()
-            self.log("History cleared.")
+            self.log("历史记录已清空")
 
     def open_github_repo(self):
         webbrowser.open("https://github.com/cornradio/ytdlpgui")
@@ -465,22 +522,21 @@ class YtDlpGUI:
     def update_tag_combobox(self):
         """更新 tag 下拉菜单选项"""
         values = list(self.tags_data)
-        if values:
-            values.append("--- 清除所有 Tag ---")
         self.tag_entry['values'] = values
 
     def on_tag_select(self, event):
-        """处理 tag 下拉菜单选择"""
-        selected = self.tag_entry.get()
-        if selected == "--- 清除所有 Tag ---":
-            if messagebox.askyesno("确认", "确定要清除所有已保存的 Tag 吗？"):
-                self.tags_data = []
-                self.save_tags()
-                self.update_tag_combobox()
-                self.tag_entry.set("")
-                self.log("All tags cleared.")
-            else:
-                self.tag_entry.set("")
+        pass
+    
+    def clear_all_tags(self):
+        """清除所有已保存的 Tag"""
+        if not self.tags_data:
+            return
+        if messagebox.askyesno("确认", "确定要清除所有已保存的 Tag 吗？"):
+            self.tags_data = []
+            self.save_tags()
+            self.update_tag_combobox()
+            self.tag_entry.set("")
+            self.log("所有标签已清除")
 
     def open_settings(self):
         """打开 settings.ini 文件"""
@@ -529,32 +585,93 @@ class YtDlpGUI:
             self.proxy_entry.config(state=tk.DISABLED)
 
     def open_cookie_file(self):
-        """打开或创建 cookie.txt 文件供用户编辑"""
-        cookie_path = os.path.abspath('cookie.txt')
-        
-        # 如果文件不存在，创建一个空的 Netscape 格式模板
-        if not os.path.exists(cookie_path):
+        """打开选中的 cookie 文件"""
+        selected = self.cookie_combo.get()
+        if not selected:
+            return
+        cookie_path = os.path.join("cookies", selected)
+        if os.path.exists(cookie_path):
             try:
-                with open(cookie_path, 'w', encoding='utf-8') as f:
-                    f.write("# Netscape HTTP Cookie File\n")
-                    f.write("# This file was generated by ytdlpgui\n")
-                    f.write("# You can edit this file with your cookies\n\n")
-                self.log(f"Created cookie.txt: {cookie_path}")
+                if os.name == 'nt':
+                    os.system(f'notepad "{cookie_path}"')
+                elif os.uname().sysname == 'Darwin':
+                    subprocess.run(['open', '-a', 'TextEdit', cookie_path])
+                else:
+                    subprocess.run(['xdg-open', cookie_path])
+                self.log(f"Opened: {selected}")
             except Exception as e:
-                self.log(f"Error creating cookie.txt: {e}")
-                return
+                self.log(f"Error opening: {e}")
+        self.reload_cookie_files()
+
+    def on_cookie_select(self, event):
+        pass  # 下拉只切换，不自动打开
+    
+    def add_cookie_file(self):
+        """在 cookies 文件夹创建新的 cookie 文件"""
+        cookies_dir = "cookies"
+        if not os.path.exists(cookies_dir):
+            os.makedirs(cookies_dir)
         
-        # 打开文件
+        name = simpledialog.askstring("新建 Cookie 文件", "请输入文件名（不含扩展名）:")
+        if name:
+            name = name.strip()
+            if not name:
+                return
+            for char in ['<', '>', ':', '"', '/', '\\', '|', '?', '*']:
+                name = name.replace(char, '_')
+            if not name.endswith('.txt'):
+                name = name + '.txt'
+            
+            file_path = os.path.join(cookies_dir, name)
+            if os.path.exists(file_path):
+                messagebox.showwarning("文件已存在", f"文件 {name} 已存在")
+                return
+            
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write("# Netscape HTTP Cookie File\n")
+                    f.write("# Edit cookies below\n\n")
+                self.log(f"已创建: {name}")
+                self.reload_cookie_files()
+                self.cookie_combo.set(name)
+                self.open_cookie_file()
+            except Exception as e:
+                self.log(f"创建文件失败: {e}")
+                messagebox.showerror("错误", f"创建文件失败: {e}")
+    
+    def reload_cookie_files(self):
+        """扫描 cookies 文件夹下的所有 cookie 文件"""
+        self.cookie_files = []
+        cookies_dir = "cookies"
+        if not os.path.exists(cookies_dir):
+            os.makedirs(cookies_dir)
         try:
-            if os.name == 'nt':  # Windows
-                os.system(f'notepad "{cookie_path}"')
-            elif os.uname().sysname == 'Darwin':  # macOS
-                subprocess.run(['open', '-a', 'TextEdit', cookie_path])
-            else:  # Linux
-                subprocess.run(['xdg-open', cookie_path])
-            self.log(f"Opened cookie.txt: {cookie_path}")
-        except Exception as e:
-            self.log(f"Error opening cookie.txt: {e}")
+            for f in os.listdir(cookies_dir):
+                if f.endswith('.txt'):
+                    self.cookie_files.append(f)
+        except:
+            pass
+        self.cookie_combo['values'] = self.cookie_files
+        if self.cookie_files:
+            if self.cookie_combo.get() not in self.cookie_files:
+                self.cookie_combo.set(self.cookie_files[0])
+        else:
+            self.cookie_combo.set('')
+    
+    def delete_cookie_file(self):
+        """删除选中的 cookie 文件"""
+        selected = self.cookie_combo.get()
+        if not selected:
+            return
+        if messagebox.askyesno("确认删除", f"确定要删除 {selected} 吗？"):
+            try:
+                file_path = os.path.join("cookies", selected)
+                os.remove(file_path)
+                self.log(f"已删除: {selected}")
+                self.reload_cookie_files()
+            except Exception as e:
+                self.log(f"删除失败: {e}")
+                messagebox.showerror("错误", f"删除失败: {e}")
 
     def get_video_title(self, url):
         """获取视频标题"""
@@ -570,15 +687,17 @@ class YtDlpGUI:
             
             # 添加cookie设置（如果启用）
             if self.cookie_var.get():
-                cookie_path = os.path.abspath('cookie.txt')
-                if os.path.exists(cookie_path):
-                    try:
-                        temp_cookie_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
-                        temp_cookie_file.close()
-                        shutil.copy2(cookie_path, temp_cookie_file.name)
-                        info_command.extend(["--cookies", temp_cookie_file.name])
-                    except:
-                        pass
+                selected_cookie = self.cookie_combo.get()
+                if selected_cookie:
+                    cookie_path = os.path.join("cookies", selected_cookie)
+                    if os.path.exists(cookie_path):
+                        try:
+                            temp_cookie_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+                            temp_cookie_file.close()
+                            shutil.copy2(cookie_path, temp_cookie_file.name)
+                            info_command.extend(["--cookies", temp_cookie_file.name])
+                        except:
+                            pass
             
             result = subprocess.run(info_command, capture_output=True, text=True, timeout=15)
             if result.returncode == 0:
@@ -597,67 +716,62 @@ class YtDlpGUI:
         if not url:
             self.log("Error: Please enter a URL.")
             return
-
-        # 获取视频标题并添加到历史记录
-        self.log("Getting video information...")
-        self.set_status("正在请求视频信息，请稍候...")
+        
+        self.add_to_history(url, "获取中...")
+        
+        thread = threading.Thread(target=self._download_worker, args=(url,))
+        thread.daemon = True
+        thread.start()
+        
+    def _download_worker(self, url):
+        """后台线程：获取标题 + 执行下载"""
+        download_id = self.download_counter + 1
+        
+        self.queue.put(f"[下载 {download_id}] 正在获取视频信息...")
+        
         video_title = self.get_video_title(url)
         if video_title:
             self.add_to_history(url, video_title)
-            self.log(f"Video title: {video_title}")
-            self.set_status(f"解析成功: {video_title}", duration=5000)
-        else:
-            # 即使获取标题失败，也记录URL
-            self.add_to_history(url, None)
-            self.set_status("无法解析视频标题，直接开始下载")
-
-        # 使用配置文件中的 ytdlp 路径
-        command = [self.ytdlp_path, url] # mac 需要加入两个单引号抱住url
         
-        proxy_address = None
+        for item in self.history_data:
+            if item.get('url') == url:
+                item['title'] = video_title if video_title else "Unknown"
+                break
+        self.save_history()
+        self.update_history_display()
+        
+        short_url = url[:50] + "..." if len(url) > 50 else url
+        self.queue.put(f"[下载 {download_id}] 开始: {short_url}")
+        
+        self.download_counter += 1
+        download_id = self.download_counter
+        
+        command = [self.ytdlp_path, url]
+        
         if self.proxy_var.get():
             proxy_address = self.proxy_entry.get()
-            if not proxy_address: 
-                self.log("Error: 'Use Proxy' is checked, but the proxy address is empty. Please provide a proxy or uncheck the box.")
-                return
-            command.extend(["--proxy", proxy_address])
-
-        # Cookie设置
+            if proxy_address:
+                command.extend(["--proxy", proxy_address])
+        
         if self.cookie_var.get():
-            cookie_path = os.path.abspath('cookie.txt')
-            if not os.path.exists(cookie_path):
-                self.log("Error: 'Use Cookie' is checked, but cookie.txt file not found. Please click '编辑 Cookie' to create and edit the file.")
-                return
-            # 检查文件是否为空
-            try:
-                with open(cookie_path, 'r', encoding='utf-8') as f:
-                    content = f.read().strip()
-                    if not content or content.startswith('#') and len(content.split('\n')) <= 3:
-                        self.log("Warning: cookie.txt appears to be empty or only contains comments. Please add your cookies.")
-            except Exception as e:
-                self.log(f"Error reading cookie.txt: {e}")
-                return
-            
-            # 复制 cookie 文件到临时文件，避免 yt-dlp 修改原始文件
-            try:
-                temp_cookie_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
-                temp_cookie_file.close()
-                shutil.copy2(cookie_path, temp_cookie_file.name)
-                command.extend(["--cookies", temp_cookie_file.name])
-                self.log(f"Using cookies from: {cookie_path} (copied to temp file to prevent modification)")
-            except Exception as e:
-                self.log(f"Error copying cookie file: {e}")
-                return
-
+            selected_cookie = self.cookie_combo.get()
+            if selected_cookie:
+                cookie_path = os.path.join("cookies", selected_cookie)
+                if os.path.exists(cookie_path):
+                    try:
+                        temp_cookie_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+                        temp_cookie_file.close()
+                        shutil.copy2(cookie_path, temp_cookie_file.name)
+                        command.extend(["--cookies", temp_cookie_file.name])
+                    except:
+                        pass
+        
         command.extend(["-U"])
         
-        # Add format selection for MP4
         if self.mp4_var.get():
             command.extend(["-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"])
-            # 添加自动合并参数，确保视频和音频自动合并
             command.extend(["--merge-output-format", "mp4"])
         
-        # Add format selection for MP3
         if self.mp3_var.get():
             command.extend(["--extract-audio", "--audio-format", "mp3"])
         
@@ -666,21 +780,18 @@ class YtDlpGUI:
             tag_val = self.tag_entry.get().strip()
             
             if base_name or tag_val:
-                # 如果没有写文件名但写了tag，则使用视频原本标题作为文件名
                 if not base_name:
-                    new_name = f"%(title)s"
+                    new_name = "%(title)s"
                 else:
                     new_name = base_name
                 
                 if tag_val:
                     new_name = f"{new_name}#{tag_val}"
-                    # 记录新 Tag
                     if tag_val not in self.tags_data:
                         self.tags_data.append(tag_val)
-                        self.save_tags()
-                        self.update_tag_combobox()
+                        self.master.after(0, self.save_tags)
+                        self.master.after(0, self.update_tag_combobox)
                 
-                # 确保文件名中不包含非法字符（简单处理）
                 for char in ['<', '>', ':', '"', '/', '\\', '|', '?', '*']:
                     new_name = new_name.replace(char, '_')
                 command.extend(["-o", f"{new_name}.%(ext)s"])
@@ -689,46 +800,154 @@ class YtDlpGUI:
         else:
             command.extend(["-o", "%(title)s-%(id)s.%(ext)s"])
         
-        # 使用配置文件中的下载路径
         command.extend(["-P", self.download_path])
-        self.log(f"Files will be downloaded to: {self.download_path}")
+        
+        self.master.after(0, lambda: self.toggle_content() if self.show_log_on_download and self.show_history_var.get() else None)
+        
+        self.run_download_process(command, download_id, url)
 
-        # 构建完整的命令字符串
-        cmd_str = " ".join(command)
-        self.log(f"Running: {cmd_str}")
-
-        # 在Windows下使用cmd.exe执行命令
-        if os.name == 'nt':
-            # 使用cmd /k 来保持窗口打开
-            full_cmd = f'cmd /k "{cmd_str}"'
-            subprocess.Popen(full_cmd, shell=True)
-        else:
-            # 在Linux/Mac下使用终端
-            if os.uname().sysname == 'Darwin':
-                subprocess.Popen(['osascript', '-e', f'tell app "Terminal" to do script "{cmd_str}"'])
+    def run_download_process(self, command, download_id, url):
+        """在新线程中运行下载进程，实时输出到GUI"""
+        process = None
+        try:
+            if os.name == 'nt':
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                )
+                
+                self.active_processes[download_id] = process
+                
+                for line in iter(process.stdout.readline, ''):
+                    if self.active_processes.get(download_id) is None:
+                        break
+                    if line:
+                        self.queue.put(f"[下载 {download_id}] {line.rstrip()}")
+                    if process.poll() is not None:
+                        break
+                process.stdout.close()
+                process.wait()
+                return_code = process.returncode
+                
             else:
-                subprocess.Popen(['x-terminal-emulator', '-e', cmd_str])
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    shell=True
+                )
+                
+                self.active_processes[download_id] = process
+                
+                for line in iter(process.stdout.readline, ''):
+                    if self.active_processes.get(download_id) is None:
+                        break
+                    if line:
+                        self.queue.put(f"[下载 {download_id}] {line.rstrip()}")
+                    if process.poll() is not None:
+                        break
+                process.stdout.close()
+                return_code = process.wait()
+            
+            if download_id in self.active_processes:
+                del self.active_processes[download_id]
+            
+            if return_code in (0, 1):
+                self.queue.put(f"[下载 {download_id}] 完成!")
+                self.master.after(0, lambda: self.set_status(f"下载 {download_id} 完成", duration=5000))
+            else:
+                self.queue.put(f"[下载 {download_id}] 失败 (错误码: {return_code})")
+                self.master.after(0, lambda: self.set_status(f"下载 {download_id} 失败", duration=5000))
+                
+        except Exception as e:
+            self.queue.put(f"[下载 {download_id}] 错误: {e}")
+            if download_id in self.active_processes:
+                del self.active_processes[download_id]
+        finally:
+            if download_id in self.active_downloads:
+                del self.active_downloads[download_id]
 
-        self.set_status("下载任务已在独立窗口中启动", duration=5000)
-        self.download_button.config(state=tk.NORMAL)
+    def stop_all_downloads(self):
+        """停止所有正在进行的下载"""
+        if not self.active_processes:
+            self.set_status("没有正在下载的任务", duration=2000)
+            return
+        
+        stopped_count = 0
+        for download_id, process in list(self.active_processes.items()):
+            try:
+                if os.name == 'nt':
+                    subprocess.run(['taskkill', '/F', '/T', '/PID', str(process.pid)], 
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    process.terminate()
+                stopped_count += 1
+                self.queue.put(f"[下载 {download_id}] 已停止")
+            except Exception as e:
+                self.queue.put(f"[下载 {download_id}] 停止失败: {e}")
+        
+        self.active_processes.clear()
+        if stopped_count > 0:
+            self.set_status(f"已停止 {stopped_count} 个下载任务", duration=3000)
 
     def upgrade_ytdlp(self):
-        """升级 yt-dlp"""
-        cmd_str = "pipx upgrade yt-dlp"
-        self.log(f"Running: {cmd_str}")
+        """升级 yt-dlp（后台执行）"""
+        self.log("正在检查 yt-dlp 版本...")
+        self.set_status("正在检查版本...")
         
-        if os.name == 'nt':
-            # Windows
-            full_cmd = f'cmd /k "{cmd_str}"'
-            subprocess.Popen(full_cmd, shell=True)
-        else:
-            # Linux/Mac fallback (though ytdlpgui.py is mainly for windows, keeping it safe)
-            if hasattr(os, 'uname') and os.uname().sysname == 'Darwin':
-                subprocess.Popen(['osascript', '-e', f'tell app "Terminal" to do script "{cmd_str}"'])
+        thread = threading.Thread(target=self._upgrade_worker)
+        thread.daemon = True
+        thread.start()
+    
+    def _upgrade_worker(self):
+        """后台线程：升级 yt-dlp 并显示结果"""
+        try:
+            result = subprocess.run([self.ytdlp_path, "--version"], 
+                                   capture_output=True, text=True, timeout=10)
+            current_version = result.stdout.strip() if result.returncode == 0 else "未知"
+            self.queue.put(f"当前版本: {current_version}")
+            
+            self.queue.put("正在升级 yt-dlp...")
+            
+            upgrade_result = subprocess.run(["pipx", "upgrade", "yt-dlp"],
+                                          capture_output=True, text=True, timeout=120)
+            
+            if upgrade_result.returncode == 0:
+                self.queue.put("升级成功!")
             else:
-                subprocess.Popen(['x-terminal-emulator', '-e', cmd_str])
-        
-        self.set_status("正在独立窗口中升级 yt-dlp...", duration=5000)
+                self.queue.put(f"升级失败: {upgrade_result.stderr}")
+                return
+            
+            result = subprocess.run([self.ytdlp_path, "--version"],
+                                  capture_output=True, text=True, timeout=10)
+            new_version = result.stdout.strip() if result.returncode == 0 else "未知"
+            self.queue.put(f"新版本: {new_version}")
+            
+            latest_result = subprocess.run(["pipx", "run", "yt-dlp", "--version"],
+                                          capture_output=True, text=True, timeout=15)
+            latest_version = latest_result.stdout.strip() if latest_result.returncode == 0 else None
+            
+            if latest_version:
+                if new_version == latest_version:
+                    self.queue.put(f"✓ 已是最新版本 (最新: {latest_version})")
+                    self.master.after(0, lambda: self.set_status("yt-dlp 已是最新", duration=5000))
+                else:
+                    self.queue.put(f"⚠ 发现新版本: {latest_version} (当前: {new_version})")
+                    self.master.after(0, lambda: self.set_status(f"有新版本可用: {latest_version}", duration=5000))
+            else:
+                self.queue.put(f"无法获取最新版本信息")
+                
+        except subprocess.TimeoutExpired:
+            self.queue.put("升级超时，请重试")
+        except Exception as e:
+            self.queue.put(f"升级出错: {e}")
 
     def run_yt_dlp(self, command):
         # 这个方法不再需要，因为我们直接在CMD窗口中执行命令
@@ -797,6 +1016,30 @@ class YtDlpGUI:
                 self.url_var.set(base_url)
                 self.set_status("已手动删除 URL 中的冗余参数 (?)")
                 self.log(f"Cleaned URL: {base_url}")
+    
+    def quit_app(self):
+        """退出程序前停止所有下载"""
+        for process in list(self.active_processes.values()):
+            try:
+                if os.name == 'nt':
+                    subprocess.run(['taskkill', '/F', '/T', '/PID', str(process.pid)],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    process.terminate()
+            except:
+                pass
+        self.master.destroy()
+    
+    def start_drag(self, event):
+        self.x = event.x
+        self.y = event.y
+    
+    def on_drag(self, event):
+        deltax = event.x - self.x
+        deltay = event.y - self.y
+        x = self.master.winfo_x() + deltax
+        y = self.master.winfo_y() + deltay
+        self.master.geometry(f'+{x}+{y}')
 
     def process_queue(self):
         try:
@@ -812,20 +1055,18 @@ class YtDlpGUI:
         self.master.after(100, self.process_queue)
 
 if __name__ == '__main__':
+    import screeninfo
     root = ThemedTk(theme="equilux")
-    root.configure(bg='#2b2b2b')  # 设置窗口背景为深黑色，菜单栏也会是黑色
+    root.configure(bg='#2b2b2b')
+    root.overrideredirect(True)
+    root.resizable(True, True)
     
-    # 设置窗口图标（标题栏和任务栏）
-    try:
-        # 使用 icon.png 设置图标
-        icon_image = tk.PhotoImage(file="icon.png")
-        root.iconphoto(True, icon_image)  # True 表示同时设置任务栏图标
-    except Exception as e:
-        # 如果加载失败，尝试使用 iconbitmap（适用于 .ico 文件）
-        try:
-            root.iconbitmap("icon.ico")
-        except:
-            pass
+    screen = screeninfo.get_monitors()[0]
+    x = (screen.width - 1400) // 2
+    y = (screen.height - 850) // 2
+    root.geometry(f'1400x850+{x}+{y}')
+    
+    root.iconbitmap(resource_path("icon.ico"))
         
     gui = YtDlpGUI(root)
     root.mainloop()
