@@ -22,6 +22,18 @@ def resource_path(relative_path):
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
 
+_SUBPROCESS_FLAGS = {}
+if IS_WIN and hasattr(subprocess, 'CREATE_NO_WINDOW'):
+    _SUBPROCESS_FLAGS['creationflags'] = subprocess.CREATE_NO_WINDOW
+
+def _run(*args, **kwargs):
+    kwargs = {**_SUBPROCESS_FLAGS, **kwargs}
+    return subprocess.run(*args, **kwargs)
+
+def _popen(*args, **kwargs):
+    kwargs = {**_SUBPROCESS_FLAGS, **kwargs}
+    return subprocess.Popen(*args, **kwargs)
+
 if IS_WIN:
     try:
         import ctypes
@@ -397,11 +409,11 @@ class YtDlpGUI(ctk.CTk):
             return
         try:
             if IS_WIN:
-                os.system(f'notepad "{cookie_path}"')
+                _popen(['notepad', cookie_path])
             elif IS_MAC:
-                subprocess.run(['open', '-a', 'TextEdit', cookie_path])
+                _run(['open', '-a', 'TextEdit', cookie_path])
             else:
-                subprocess.run(['xdg-open', cookie_path])
+                _run(['xdg-open', cookie_path])
         except Exception as e:
             self.log(f"Error opening: {e}")
 
@@ -536,7 +548,7 @@ class YtDlpGUI(ctk.CTk):
                         tmp.close()
                         shutil.copy2(cookie_path, tmp.name)
                         cmd.extend(["--cookies", tmp.name])
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            result = _run(cmd, capture_output=True, text=True, timeout=15)
             if result.returncode == 0:
                 title = result.stdout.strip()
                 return title if title else None
@@ -623,12 +635,8 @@ class YtDlpGUI(ctk.CTk):
 
     def _run_process(self, command, download_id):
         try:
-            kwargs = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         text=True, bufsize=1, universal_newlines=True)
-            if IS_WIN and hasattr(subprocess, 'CREATE_NO_WINDOW'):
-                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-
-            process = subprocess.Popen(command, **kwargs)
+            process = _popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, bufsize=1, universal_newlines=True)
             self.active_processes[download_id] = process
 
             for line in iter(process.stdout.readline, ''):
@@ -665,7 +673,7 @@ class YtDlpGUI(ctk.CTk):
         for did, proc in list(self.active_processes.items()):
             try:
                 if IS_WIN:
-                    subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
+                    _run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 else:
                     proc.terminate()
@@ -690,14 +698,14 @@ class YtDlpGUI(ctk.CTk):
 
         # Check yt-dlp
         try:
-            result = subprocess.run([self.ytdlp_path, "--version"],
+            result = _run([self.ytdlp_path, "--version"],
                                    capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 ver = result.stdout.strip()
                 self.queue.put(f"  ✓ yt-dlp 已安装 (版本: {ver})")
                 # Check path
                 which_cmd = "where" if IS_WIN else "which"
-                loc = subprocess.run([which_cmd, self.ytdlp_path],
+                loc = _run([which_cmd, self.ytdlp_path],
                                     capture_output=True, text=True, timeout=5)
                 if loc.returncode == 0:
                     self.queue.put(f"    路径: {loc.stdout.strip()}")
@@ -723,13 +731,13 @@ class YtDlpGUI(ctk.CTk):
 
         # Check ffmpeg
         try:
-            result = subprocess.run(["ffmpeg", "-version"],
+            result = _run(["ffmpeg", "-version"],
                                    capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 first_line = result.stdout.split('\n')[0]
                 self.queue.put(f"  ✓ ffmpeg 已安装 ({first_line.strip()})")
                 which_cmd = "where" if IS_WIN else "which"
-                loc = subprocess.run([which_cmd, "ffmpeg"],
+                loc = _run([which_cmd, "ffmpeg"],
                                     capture_output=True, text=True, timeout=5)
                 if loc.returncode == 0:
                     self.queue.put(f"    路径: {loc.stdout.strip()}")
@@ -755,7 +763,7 @@ class YtDlpGUI(ctk.CTk):
 
         # Check ffprobe (usually comes with ffmpeg)
         try:
-            result = subprocess.run(["ffprobe", "-version"],
+            result = _run(["ffprobe", "-version"],
                                    capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 self.queue.put("  ✓ ffprobe 已安装")
@@ -806,18 +814,18 @@ class YtDlpGUI(ctk.CTk):
 
     def _upgrade_worker(self):
         try:
-            result = subprocess.run([self.ytdlp_path, "--version"], capture_output=True, text=True, timeout=10)
+            result = _run([self.ytdlp_path, "--version"], capture_output=True, text=True, timeout=10)
             ver = result.stdout.strip() if result.returncode == 0 else "未知"
             self.queue.put(f"当前版本: {ver}")
 
-            up = subprocess.run([self.ytdlp_path, "-U"], capture_output=True, text=True, timeout=120)
+            up = _run([self.ytdlp_path, "-U"], capture_output=True, text=True, timeout=120)
             output = (up.stdout.strip() + "\n" + up.stderr.strip()).strip()
             if output:
                 for line in output.splitlines():
                     self.queue.put(f"  {line}")
 
             if up.returncode == 0:
-                result2 = subprocess.run([self.ytdlp_path, "--version"], capture_output=True, text=True, timeout=10)
+                result2 = _run([self.ytdlp_path, "--version"], capture_output=True, text=True, timeout=10)
                 new_ver = result2.stdout.strip() if result2.returncode == 0 else "未知"
                 if new_ver != ver:
                     self.queue.put(f"升级成功! {ver} → {new_ver}")
@@ -838,9 +846,9 @@ class YtDlpGUI(ctk.CTk):
                 if IS_WIN:
                     os.startfile(os.path.realpath(self.download_path))
                 elif IS_MAC:
-                    subprocess.run(['open', self.download_path])
+                    _run(['open', self.download_path])
                 else:
-                    subprocess.run(['xdg-open', self.download_path])
+                    _run(['xdg-open', self.download_path])
             except Exception as e:
                 self.log(f"无法打开文件夹: {e}")
         else:
@@ -873,9 +881,9 @@ class YtDlpGUI(ctk.CTk):
             if IS_WIN:
                 os.startfile(bin_dir)
             elif IS_MAC:
-                subprocess.run(['open', bin_dir])
+                _run(['open', bin_dir])
             else:
-                subprocess.run(['xdg-open', bin_dir])
+                _run(['xdg-open', bin_dir])
         except Exception as e:
             self.log(f"无法打开目录: {e}")
 
