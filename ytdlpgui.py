@@ -156,10 +156,13 @@ class YtDlpGUI:
         self.log_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), padx=12, pady=(0, 12))
         self.log_text = tk.Text(self.log_frame, bg='#2b2b2b', fg='white', insertbackground='white',
                                font=('Consolas', 10), relief=tk.FLAT, borderwidth=0,
-                               highlightthickness=0, padx=5, pady=5,
-                               yscrollcommand=lambda f, l: None)
+                               highlightthickness=0)
         self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.log_text.config(state=tk.DISABLED)
+        self.log_scrollbar = tk.Scrollbar(self.log_frame, orient=tk.VERTICAL, command=self.log_text.yview,
+                                         bg='#2b2b2b', troughcolor='#2b2b2b', highlightthickness=0)
+        self.log_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.log_text.config(yscrollcommand=self.log_scrollbar.set)
         
         # 历史记录区域（默认隐藏）
         self.history_frame = ttk.Frame(self.main_frame)
