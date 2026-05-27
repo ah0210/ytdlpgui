@@ -1,4 +1,20 @@
-# 如何使用自己的cookie下载会员视频
+# 环境检查报错是啥情况
+本程序有两个依赖，需要你自行安装。
+1 yt-dlp (下载视频用的)
+2 ffmpeg (把视频转换格式用的)
+如果没有 yt-dlp  则无法下载。  
+如果没有 ffmpeg 你有可能会下载到两个文件，一个音频，一个不带声音的视频。  
+
+# 为什么我下载不了的视频？
+```
+[下载 1] 正在获取视频信息...
+[下载 1] ERROR: [BiliBili] 1HyG76nEhW: Unable to download webpage: HTTP Error 412: Precondition Failed (caused by <HTTPError 412: Precondition Failed>)
+[下载 1] 完成!
+```
+这种情况一般是需要使用cookie，因为网站具备反扒措施，不使用cookie的话，他认为你是机器人，就不给你下载。  
+你可以参考下面的如何使用自己cookie下载视频来配置一下cookie。
+
+# 如何使用自己的cookie下载视频
 1. 去 chrome webstore 下载扩展： [Cookie-Editor](https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm)
 2. 打开B站，登录账号，点击扩展，右下角export（导出），选择 Netscape格式，然后点击程序 【编辑cookie】按钮，覆盖并保存txt文件 （参考下图）
 3. 找一个会员视频，如 [迷宫饭](https://www.bilibili.com/bangumi/play/ep815459) ， 复制他的单集url如 `https://www.bilibili.com/bangumi/play/ep815459` ，然后勾选 使用cookie 下载即可
